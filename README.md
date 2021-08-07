@@ -1,1 +1,1 @@
-# licenta-server
+# licenta
