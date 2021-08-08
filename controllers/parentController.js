@@ -32,8 +32,8 @@ router.post('/login', (req, res) => {
                 config.secret, 
                 {expiresIn: 86400}
                 );
-
-            res.status(200).send({auth:true, JWTtoken: token});
+            var username = tutore.parents[0].username
+            res.status(200).send({ JWTtoken: token, username:username});
           
         });   
   
@@ -42,6 +42,12 @@ router.post('/login', (req, res) => {
 // inregistrarea parintelui (parinte care nu a primit invitatie pentru a urmari impreuna cu un alt parinte copii inregistrati deja din aplicatie)
 
 router.post('/register', (req,res) => {
+    Tutore.findOne( 
+        { "parents.email" : req.body.email },
+        (err, tutore) => {
+            if(err) return res.status(500).send('Error on the server');
+            if(tutore) return res.status(409).send('Account already in use'); 
+    
     var hashedPassword = bcrypt.hashSync(req.body.password, 8)
     var tutore = new Tutore({
         parents: [
@@ -62,10 +68,10 @@ router.post('/register', (req,res) => {
             config.secret,
             {expiresIn: 86400}
         );
-        res.status(200).send({auth:true, JWTtoken: token});
+        res.status(201).send({auth:true, JWTtoken: token});
     });
-    }
-)
+    });    
+});
 
 router.post('/logout', (req, res) => {
     res.status(200).send({ auth: false, JWTtoken: null });
@@ -101,7 +107,7 @@ router.post('/addChild', verifyJWT, (req, res , next) => {
         (err, child) => {
             if(err) return res.status(500).send('Inregistrare nu s-a putut efectua');
             if(child['nModified'] === 0 ) return res.status(400).send('Ceva nu merge')
-            res.status(200).send('Copilul a fost inregistrat');
+            res.status(201).send('Copilul a fost inregistrat');
         }
         )
 });
@@ -154,39 +160,43 @@ router.post('/addZone', verifyJWT, (req,res, next) => {
     // nu stiu daca trimit tokenul copilului sau numele, dar cred ca tokenul NUMELE ca zonele sunt pentru toate device-urile !!!!
     if (!req.body.childName || !req.body.zoneName || !req.body.radius || !req.body.coordinates)
         return res.status(400).send('Parametrii nu au fost trimisi corect.')
-    Tutore.updateOne(
-        {
-            "parents._id" : req.id, 
-            "children.name" : req.body.childName         
-        },
-        {
-            $addToSet : {
-                "children.$.zones": {
-                    name: req.body.zoneName, 
-                    coordinates: req.body.coordinates,
-                    radius: req.body.radius
-                }
-            }
-        }, 
-        (err, zone) => {
-            if(err) 
-                {
-                    console.log(err)
-                    return res.status(500).send('Inregistrare nu s-a putut efectua');
-                }
-            res.status(200).send('Zona a fost adaugata');
-        }
-    )
+    console.log(req.body);
+    // Tutore.updateOne(
+    //     {
+    //         "parents._id" : req.id, 
+    //         "children.name" : req.body.childName         
+    //     },
+    //     {
+    //         $addToSet : {
+    //             "children.$.zones": {
+    //                 name: req.body.zoneName, 
+    //                 coordinates: req.body.coordinates,
+    //                 radius: req.body.radius
+    //             }
+    //         }
+    //     }, 
+    //     (err, zone) => {
+    //         if(err) 
+    //             {
+    //                 console.log(err)
+    //                 return res.status(500).send('Inregistrare nu s-a putut efectua');
+    //             }
+    //         res.status(200).send('Zona a fost adaugata');
+    //     }
+    // )
+    res.status(200).send('Zona a fost adaugata');
     
 })
 
 // get locatie pentr un anumit copil/device
 // VEZI CUM A FACUT SILVIU LEGATURA DINTRE COPIL SI PARINTE CU TOKEN-ul ALA
-router.get('/getLoc', verifyJWT, (req, res, next) => {
+router.get('/getLoc/:childName', verifyJWT, (req, res, next) => {
+    console.log(req.id)
+    console.log(req.params)
     Tutore.findOne(
         {
             "parents._id" : req.id,
-            "children.name" : req.body.childName
+            "children.name" : req.params.childName
         },
         {
             "children.devices.location.coordinates.$" : 1
@@ -194,12 +204,13 @@ router.get('/getLoc', verifyJWT, (req, res, next) => {
         (err, coordinates) => {
             if(err) return res.status(500).send("Eroare server.");
             if(!coordinates) return res.status(404).send("Coordonatele nu se pot gasi");
-            res.status(200).send({coordinates: []});
+            res.status(200).send({coordinates: coordinates.children[0].devices[0].location.coordinates});
         })
    
 })
 
 router.get('/getChildren', verifyJWT, (req, res, next) => {
+    console.log('sunt in getChildren')
     Tutore.find(
         {
             'parents._id' : req.id
@@ -212,7 +223,6 @@ router.get('/getChildren', verifyJWT, (req, res, next) => {
         (err, result) => {
             if(err) return res.status(500).send("Eroare server.");
             if(!result) return res.status(404).send("Lista copii nu se poate gasi.")
-            console.log(result)
             res.status(200).send({children : result[0].children});
         }
     )
