@@ -1,11 +1,13 @@
 var express = require('express');
 router = express.Router();
 var bodyParser = require('body-parser');
+var mongoose = require('mongoose');
 
 router.use(bodyParser.urlencoded({extended:true}));
 router.use(bodyParser.json())
 
 var Tutore = require('../models/tutore/tutoreSchema');
+var FcmDevices = require('../models/notification/FCMdeviceSchema');
 var verifyJWT = require('../auth/verifyJWT');
 
 var jwt = require('jsonwebtoken');
@@ -16,7 +18,6 @@ var config = require ('../config.js');
 // logarea parintelui 
 
 router.post('/login', (req, res) => {  
-    console.log(req.body.password);
     Tutore.findOne( 
         { "parents.email" : req.body.email },
         (err, tutore) => {
@@ -61,7 +62,7 @@ router.post('/register', (req,res) => {
     });
 
     tutore.save((err, tutore) => {
-        if(err) return res.status(500).send('Inregistrare nu s-a putut efectua')
+        if(err) return res.status(500).send({message: err.message})
 
         var token = jwt.sign (
             {id: tutore.parents[0]._id},
@@ -80,11 +81,13 @@ router.post('/logout', (req, res) => {
 // adaugare copil (cu token-ul pentru device)
 //fortam sa puna nume, sex (din aplicatie mai bine)
 router.post('/addChild', verifyJWT, (req, res , next) => {
-
-    console.log(req.body.token)
+    console.log(req.body)
+    var token = generateNewToken();
     Tutore.updateOne(
         {
-            "parents._id" : req.id,           
+            "parents._id" : req.id,  
+            "children.name": {$ne: req.body.childName}, 
+            "children.devices.token": {$ne: token}     
         },
         {
             $push : {
@@ -93,11 +96,11 @@ router.post('/addChild', verifyJWT, (req, res , next) => {
                     gender: req.body.gender,
                     devices: [
                         {
-                            token: req.body.token,
+                            token: token,
                             location : {
                                 coordinates: []
                             },
-                            activated: false
+                            activated: false                           
                         }
                     ],
                     zones: []
@@ -105,12 +108,84 @@ router.post('/addChild', verifyJWT, (req, res , next) => {
             }
         }, 
         (err, child) => {
-            if(err) return res.status(500).send('Inregistrare nu s-a putut efectua');
-            if(child['nModified'] === 0 ) return res.status(400).send('Ceva nu merge')
-            res.status(201).send('Copilul a fost inregistrat');
+            if(err){
+                console.log(err);
+                return res.status(500).send('Inregistrare nu s-a putut efectua');
+            } 
+            if(child['nModified'] === 0 ) return res.status(400).send('Bad request')
+            res.status(201).send({token:token});
         }
         )
 });
+
+
+function generateId(length) {
+    var result           = '';
+    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var charactersLength = characters.length;
+    for ( var i = 0; i < length; i++ ) {
+      result += characters.charAt(Math.floor(Math.random() * 
+ charactersLength));
+   }
+   return result;
+}
+
+function tokenAlreadyExists (token){
+    Tutore.findOne(
+        {
+            'children.devices.token': token
+        },
+        (err, token) => { 
+            if(err) return true;
+            if(token) return true;
+            if(!token) return false;
+        }
+    )
+}
+
+function generateNewToken() { 
+    var token = generateId(6);
+    while(tokenAlreadyExists(token)){
+        token = generateId(6);
+    }
+    return token;
+}
+
+router.post('/addDevice', verifyJWT, (req, res, next) => {
+    var token = generateNewToken();
+    Tutore.updateOne(
+        {
+            "parents._id" : req.id,  
+            "children.name": req.body.childName,
+            "children.devices.token": {$ne: token}       
+        },
+        {
+            $push : {
+                "children.$.devices": 
+                        {
+                            token: token,
+                            location : {
+                                coordinates: []
+                            },
+                            activated: false
+                        }
+                }
+        }, 
+        (err, child) => {
+            if(err){
+                console.log(err);
+                return res.status(500).send('Inregistrare nu s-a putut efectua');
+            } 
+            if(child['nModified'] === 0 ) return res.status(400).send('Bad request')
+            res.status(201).send({token: token});
+        }
+        )
+})
+
+router.put('/updateToken', verifyJWT, (req, res, next) => {
+    if (!req.body.childName)
+        return res.status(400).send('Numele copilului nu a fost trimis')
+})
 
 // update fields pentru copil (nume/gender)
 // ce primesc? token device? sau numele pe care il are acum??
@@ -148,11 +223,7 @@ router.put('/setChildFields', verifyJWT, (req,res, next) => {
     
 });
 
-// nu stiu aici sa fac
-router.put('/updateToken', verifyJWT, (req, res, next) => {
-    if (!req.body.childName)
-        return res.status(400).send('Numele copilului nu a fost trimis')
-})
+
 
 // adauga zona
 router.post('/addZone', verifyJWT, (req,res, next) => {
@@ -161,31 +232,32 @@ router.post('/addZone', verifyJWT, (req,res, next) => {
     if (!req.body.childName || !req.body.zoneName || !req.body.radius || !req.body.coordinates)
         return res.status(400).send('Parametrii nu au fost trimisi corect.')
     console.log(req.body);
-    // Tutore.updateOne(
-    //     {
-    //         "parents._id" : req.id, 
-    //         "children.name" : req.body.childName         
-    //     },
-    //     {
-    //         $addToSet : {
-    //             "children.$.zones": {
-    //                 name: req.body.zoneName, 
-    //                 coordinates: req.body.coordinates,
-    //                 radius: req.body.radius
-    //             }
-    //         }
-    //     }, 
-    //     (err, zone) => {
-    //         if(err) 
-    //             {
-    //                 console.log(err)
-    //                 return res.status(500).send('Inregistrare nu s-a putut efectua');
-    //             }
-    //         res.status(200).send('Zona a fost adaugata');
-    //     }
-    // )
-    res.status(200).send('Zona a fost adaugata');
-    
+    Tutore.updateOne(
+        {
+            "parents._id" : req.id, 
+            "children.name" : req.body.childName,
+            "children.zones.name" : {$ne: req.body.zoneName}       
+        },
+        {
+            $addToSet : {
+                "children.$.zones": {
+                    name: req.body.zoneName, 
+                    coordinates: req.body.coordinates,
+                    radius: req.body.radius
+                }
+            }
+        }, 
+        (err, zone) => {
+            if(err) 
+                {
+                    console.log(err)
+                    return res.status(500).send('Inregistrare nu s-a putut efectua');
+                }
+            console.log(zone)
+            if(zone['nModified'] === 0 ) return res.status(400).send('Ceva nu merge')
+            res.status(200).send('Zona a fost adaugata');
+        }
+    )    
 })
 
 // get locatie pentr un anumit copil/device
@@ -210,21 +282,23 @@ router.get('/getLoc/:childName', verifyJWT, (req, res, next) => {
 })
 
 router.get('/getChildren', verifyJWT, (req, res, next) => {
-    console.log('sunt in getChildren')
     Tutore.find(
         {
             'parents._id' : req.id
         },
         {
-            "children.name" : 1, 
-            "children.gender" : 1,
-            "_id" : 0
-        },
-        (err, result) => {
-            if(err) return res.status(500).send("Eroare server.");
-            if(!result) return res.status(404).send("Lista copii nu se poate gasi.")
-            res.status(200).send({children : result[0].children});
-        }
+            'children.gender': 1,
+            'children.name': 1,
+            'children.devices.activated' : 1,
+            'children.devices.token': 1
+       },
+       (err,result) => {
+           if(err) return res.status(500).send({message: err.message});
+           if(!result) return res.status(404).send({message: 'not found'});
+           console.log(JSON.stringify(result))
+           res.status(200).send({children: result[0].children})
+
+       }
     )
 });
 
@@ -236,15 +310,55 @@ router.get('/getDevices', verifyJWT, (req,res, next) => {
             'children.name' : req.body.childName
         },
         {
-            'children.devices.token' : 1
+            'children.devices.token' : 1,
+            // 'children.devices.activated': 1
         }, 
         (err, result) => {
             if(err) return res.status(500).send("Eroare server.");
             if(!result) return res.status(404).send("Lista cu device-uri nu se poate gasi.")
-
-            res.status(200).send({devices: result[0].children[0].devices})
+            console.log(JSON.stringify(result))
+            res.status(200).send(result)
         }
     )
+})
+
+router.get('/childDevice/activated', verifyJWT, (req,res,next) => {
+
+    let parent_id = mongoose.Types.ObjectId(req.id)
+    let query = [
+    {
+        $match: {'parents._id' : parent_id}
+    },
+    {
+        $unwind: '$children'
+    },
+    {
+        $unwind: '$children.devices'
+    },
+    {
+        $match: {'children.devices.token': 'BvDkZ0'}
+    },
+    {
+        $project: {
+                'children.devices.activated' : 1
+            }
+    }
+];
+  Tutore.aggregate(query)
+    .then((result)=>{
+        if(!result) return res.status(404).send({message: 'not found'});
+        console.log(JSON.stringify(result));
+        res.status(200).send({token_activated : result[0].children.devices.activated});
+    })
+    .catch((err) => {
+        console.log(err);
+        res.status(500).send({message: err.message});
+    })
+})
+
+///////////////////// partea de notificari ////////////////////////////
+router.post('/notification',verifyJWT, (req,res,next) => {
+    
 })
 
 module.exports = router;

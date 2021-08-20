@@ -11,7 +11,7 @@ var verifyJWT = (req, res, next) => {
     //verificam daca este un token corect 
     jwt.verify(token, config.secret, (err, decoded) => {
         if(err) 
-            return res.status(500).send({auth: false, message: 'Failed to authenticate token. '})
+            return res.status(500).send({auth: false, message: 'Failed to authenticate token.'})
         req.id = decoded.id;
         next();
     })

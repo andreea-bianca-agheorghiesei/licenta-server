@@ -6,8 +6,7 @@ var DeviceSchema = new mongoose.Schema({
          type: {type: String, default: "Point"},
          coordinates: []
         },
-    activated: {type: Boolean}
-    
+    activated: {type: Boolean}   
 }, 
 {timestamps: true})
 

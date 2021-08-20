@@ -6,4 +6,4 @@ var TutoreSchema = new mongoose.Schema({
     children: [ChildSchema]
 })
 
-module.exports = mongoose.model('tutores', TutoreSchema )
+module.exports = mongoose.model('tutores', TutoreSchema)
