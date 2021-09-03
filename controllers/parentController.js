@@ -8,6 +8,7 @@ router.use(bodyParser.json())
 
 var Tutore = require('../models/tutore/tutoreSchema');
 var FcmDevices = require('../models/notification/FCMdeviceSchema');
+var Notification = require('../models/notification/notificationSchema');
 var verifyJWT = require('../auth/verifyJWT');
 
 var jwt = require('jsonwebtoken');
@@ -18,6 +19,7 @@ var config = require ('../config.js');
 // logarea parintelui 
 
 router.post('/login', (req, res) => {  
+    console.log(req.body);
     Tutore.findOne( 
         { "parents.email" : req.body.email },
         (err, tutore) => {
@@ -98,6 +100,7 @@ router.post('/addChild', verifyJWT, (req, res , next) => {
                         {
                             token: token,
                             location : {
+                                type: "Point",
                                 coordinates: []
                             },
                             activated: false                           
@@ -150,6 +153,31 @@ function generateNewToken() {
     }
     return token;
 }
+
+router.put('/deleteChild', verifyJWT, (req, res , next) => {
+    console.log(req.body)
+    Tutore.updateOne(
+        {
+            "parents._id" : req.id,  
+        },
+        {
+            $pull : {
+                children: {
+                    name: req.body.childName
+                }
+            }
+        }, 
+        (err, child) => {
+            if(err){
+                console.log(err);
+                return res.status(500).send('Inregistrare nu s-a putut efectua');
+            } 
+            if(child['nModified'] === 0 ) return res.status(400).send('Bad request')
+            res.status(201).send({token:token});
+        }
+        )
+});
+
 
 router.post('/addDevice', verifyJWT, (req, res, next) => {
     var token = generateNewToken();
@@ -232,6 +260,8 @@ router.post('/addZone', verifyJWT, (req,res, next) => {
     if (!req.body.childName || !req.body.zoneName || !req.body.radius || !req.body.coordinates)
         return res.status(400).send('Parametrii nu au fost trimisi corect.')
     console.log(req.body);
+    let long =  parseFloat(req.body.coordinates[0]);
+    let lat =  parseFloat(req.body.coordinates[1]);
     Tutore.updateOne(
         {
             "parents._id" : req.id, 
@@ -242,7 +272,7 @@ router.post('/addZone', verifyJWT, (req,res, next) => {
             $addToSet : {
                 "children.$.zones": {
                     name: req.body.zoneName, 
-                    coordinates: req.body.coordinates,
+                    coordinates: [long, lat],
                     radius: req.body.radius
                 }
             }
@@ -261,10 +291,10 @@ router.post('/addZone', verifyJWT, (req,res, next) => {
 })
 
 // get locatie pentr un anumit copil/device
-// VEZI CUM A FACUT SILVIU LEGATURA DINTRE COPIL SI PARINTE CU TOKEN-ul ALA
+
 router.get('/getLoc/:childName', verifyJWT, (req, res, next) => {
-    console.log(req.id)
-    console.log(req.params)
+    // console.log(req.id)
+    // console.log(req.params)
     Tutore.findOne(
         {
             "parents._id" : req.id,
@@ -295,9 +325,8 @@ router.get('/getChildren', verifyJWT, (req, res, next) => {
        (err,result) => {
            if(err) return res.status(500).send({message: err.message});
            if(!result) return res.status(404).send({message: 'not found'});
-           console.log(JSON.stringify(result))
+        //    console.log(JSON.stringify(result))
            res.status(200).send({children: result[0].children})
-
        }
     )
 });
@@ -357,8 +386,46 @@ router.get('/childDevice/activated', verifyJWT, (req,res,next) => {
 })
 
 ///////////////////// partea de notificari ////////////////////////////
-router.post('/notification',verifyJWT, (req,res,next) => {
-    
+router.get('/notifications',verifyJWT, (req,res,next) => {
+    console.log('sunt in notifications')
+    Tutore.findOne(
+    {
+        'parents._id' : req.id
+    }
+    ).populate({
+        path: 'parents',
+        populate: {
+            path : 'notifications',
+            model: 'notifications'
+        }
+    })
+     .exec(
+         (err, result) => {
+            if(err) console.log(err);
+            console.log(result.parents[0].notifications);
+            res.status(200).send({notifications: result.parents[0].notifications})
+        }
+     )
+     
+})
+
+router.put('/notifications', verifyJWT, (req, res, next) => {
+    Notification.updateMany(
+        {
+            'userId' : req.id,
+            'read': {$ne : true}
+        },
+        {
+            $set: {'read': true}
+        },
+        {
+            multi: true
+        }
+    ).then (result => {
+        res.status(200).send({message: "Notifications read"});
+    }).catch( err => {
+        return res.status(400).send({message: err.message})
+    })
 })
 
 module.exports = router;

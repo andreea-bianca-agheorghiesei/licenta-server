@@ -8,6 +8,8 @@ var DeviceSchema = new mongoose.Schema({
         },
     activated: {type: Boolean}   
 }, 
-{timestamps: true})
+{timestamps: true});
+
+
 
 module.exports = DeviceSchema

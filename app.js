@@ -13,12 +13,14 @@ app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Headers", "x-access-token, Origin, X-Requested-With, Content-Type, Accept");
   next();
 });
+
 var parentController = require(__root + 'controllers/parentController')
 var childController = require(__root + 'controllers/childController')
-var notificationController = require(__root + 'controllers/notificationController')
+//var notificationController = require(__root + 'controllers/notificationController')
 
 app.use('/api/parent', parentController)
 app.use('/api/child', childController)
-app.use('/api/notification', notificationController)
+
+
 
 module.exports = app;

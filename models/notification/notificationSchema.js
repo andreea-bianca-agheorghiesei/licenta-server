@@ -5,7 +5,7 @@ var NotificationSchema = new mongoose.Schema({
     title: {type:String},
     message: {type: String},
     read: {type: Boolean},
-    timestamp: {type: Date},s
+    timestamp: {type: Date},
 })
 
 module.exports = mongoose.model('notifications', NotificationSchema);
